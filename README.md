@@ -1,141 +1,136 @@
-# CTB2MD - Migrate from Cherrytree to Obsidian / Migration de Cherrytree vers Obsidian
+# CTB2MD - CherryTree to Obsidian Converter
 
-[![Release](https://img.shields.io/github/v/release/Polyx10/CTB2MD)](https://github.com/Polyx10/CTB2MD/releases)
-[![License](https://img.shields.io/github/license/Polyx10/CTB2MD)](https://github.com/Polyx10/CTB2MD/blob/main/LICENSE)
-[![macOS](https://img.shields.io/badge/platform-macOS-blue)](https://github.com/Polyx10/CTB2MD/releases)
-[![Obsidian](https://img.shields.io/badge/tool-obsidian-purple)](https://obsidian.md)
-[![Cherrytree](https://img.shields.io/badge/convert-cherrytree-red)](https://www.giuspen.net/cherrytree/)
-
-[English]
-
-⚠️ **IMPORTANT: This is a macOS-only application**
-
-CTB2MD is a powerful yet simple tool designed to help macOS users migrate their notes from Cherrytree (.ctb) to Obsidian-compatible Markdown (.md). Perfect for knowledge base migration on Apple computers, this native application preserves your note structure, formatting, and command blocks while converting to clean Markdown that works flawlessly in Obsidian.
-
-### System Requirements
-- macOS 10.15 (Catalina) or later
-- Apple Silicon (M1/M2) or Intel processor
-- 50MB free disk space
-- Python 3.x (included in macOS)
-
-### Not Compatible With
-- Windows
-- Linux
-- Chrome OS
-- Mobile devices
+Convert CherryTree notes to Obsidian-compatible Markdown files with hierarchical folder structure.
 
 ## Features
 
-- Simple GUI with file selector
-- Convert .ctb files to Markdown
-- Preserve layout and formatting
-- Support for command blocks
-- Compatible with Obsidian
+- Supports all CherryTree formats: `.ctb`, `.ctz`, `.ctd`, `.ctx`
+- Password-protected files supported
+- Preserves folder hierarchy (nodes with children become folders)
+- Skips empty nodes (no empty .md files created)
+- Remembers last used input/output folders
+- Native macOS app available
 
 ## Installation
 
-1. Download the latest version from the [Releases](../../releases) page
-2. Extract the archive
-3. Drag CTB2MD.app to your Applications folder
+### Option 1: Use the compiled app
+
+Copy `CTB2MD.app` from `dist/` to your Applications folder:
+
+```bash
+cp -r dist/CTB2MD.app /Applications/
+```
+
+### Option 2: Run from source
+
+#### Prerequisites
+
+**Python with tkinter support is required.**
+
+If you use pyenv, you need to rebuild Python with tkinter:
+
+```bash
+# Install tcl-tk
+brew install tcl-tk
+
+# Uninstall current Python version
+pyenv uninstall 3.13.3  # or your version
+
+# Reinstall with tkinter support
+export LDFLAGS="-L/opt/homebrew/opt/tcl-tk/lib"
+export CPPFLAGS="-I/opt/homebrew/opt/tcl-tk/include"
+export PKG_CONFIG_PATH="/opt/homebrew/opt/tcl-tk/lib/pkgconfig"
+export PYTHON_CONFIGURE_OPTS="--with-tcltk-includes='-I/opt/homebrew/opt/tcl-tk/include' --with-tcltk-libs='-L/opt/homebrew/opt/tcl-tk/lib -ltcl9.0 -ltk9.0'"
+
+pyenv install 3.13.3
+
+# Verify tkinter works
+python -c "import tkinter; print('tkinter OK')"
+```
+
+#### Setup
+
+```bash
+cd CTB2MD
+python -m venv venv
+source venv/bin/activate
+pip install py7zr
+```
+
+#### Run
+
+```bash
+source venv/bin/activate
+python ctb2md_hierarchical.py
+```
+
+Or add an alias to `~/.zshrc`:
+
+```bash
+alias ctb2md="cd ~/path/to/CTB2MD && source venv/bin/activate && python ctb2md_hierarchical.py"
+```
 
 ## Usage
 
-1. Double-click CTB2MD.app
-2. Select your .ctb file to convert
-3. Markdown files will be created in a new folder next to the source file
+1. Launch the app (or run the script)
+2. Select your CherryTree file (`.ctb`, `.ctz`, `.ctd`, or `.ctx`)
+3. Choose the output folder (e.g., your Obsidian vault)
+4. If the file is password-protected, enter the password
+5. Markdown files are created preserving your note hierarchy
 
-## Development
+## Output Structure
 
-To build the application from source:
-
-```bash
-git clone https://github.com/Polyx10/CTB2MD.git
-cd CTB2MD
-./create_app.sh
+```
+Output folder/
+├── Category 1/
+│   ├── Topic A/
+│   │   ├── Note 1.md
+│   │   └── Note 2.md
+│   └── Topic B/
+│       └── Note 3.md
+└── Category 2/
+    └── Topic C.md
 ```
 
-## Requirements
+- Nodes with children become folders
+- Nodes with content become `.md` files
+- Empty nodes are skipped
 
-- macOS
-- Python 3.x
-- tkinter (included with Python)
+## Settings
 
----
+Settings are saved automatically:
 
-[Français]
+| Mode | Location |
+|------|----------|
+| Script | `./settings.json` |
+| Compiled app | `~/Library/Application Support/CTB2MD/settings.json` |
 
-⚠️ **IMPORTANT : Cette application fonctionne uniquement sur macOS**
+To reset settings, delete the `settings.json` file.
 
-Une application simple pour convertir des fichiers Cherrytree (.ctb) en fichiers Markdown (.md), spécialement conçue pour macOS.
-
-### Configuration requise
-- macOS 10.15 (Catalina) ou plus récent
-- Processeur Apple Silicon (M1/M2) ou Intel
-- 50 Mo d'espace disque
-- Python 3.x (inclus avec macOS)
-
-### Non compatible avec
-- Windows
-- Linux
-- Chrome OS
-- Appareils mobiles
-
-## Fonctionnalités
-
-- Interface graphique simple avec sélecteur de fichiers
-- Conversion des fichiers .ctb en Markdown
-- Préservation de la mise en page et du formatage
-- Support des blocs de code pour les commandes
-- Compatible avec Obsidian
-
-## Installation
-
-1. Téléchargez la dernière version depuis la page des [Releases](../../releases)
-2. Décompressez l'archive
-3. Glissez l'application CTB2MD.app dans votre dossier Applications
-
-## Utilisation
-
-1. Double-cliquez sur CTB2MD.app
-2. Sélectionnez votre fichier .ctb à convertir
-3. Les fichiers Markdown seront créés dans un nouveau dossier à côté du fichier source
-
-## Développement
-
-Pour construire l'application depuis les sources :
+## Building the App
 
 ```bash
-git clone https://github.com/Polyx10/CTB2MD.git
-cd CTB2MD
-./create_app.sh
+source venv/bin/activate
+pip install pyinstaller
+pyinstaller -y --onedir --windowed --name "CTB2MD" ctb2md_hierarchical.py
 ```
 
-## Prérequis
+The app will be created in `dist/CTB2MD.app`.
 
-- macOS
-- Python 3.x
-- tkinter (inclus avec Python)
+## File Format Support
 
-## Screenshots / Captures d'écran
+| Extension | Format | Support |
+|-----------|--------|---------|
+| `.ctb` | SQLite database | Yes |
+| `.ctz` | SQLite + password | Yes |
+| `.ctd` | XML | Yes |
+| `.ctx` | XML + password | Yes |
 
-[English]
-Screenshots will be added soon. The application features:
-- Clean and simple interface
-- Dark mode support
-- Progress feedback
-- Direct access to converted files
+## System Requirements
 
-[Français]
-Les captures d'écran seront ajoutées prochainement. L'application propose :
-- Interface simple et épurée
-- Support du mode sombre
-- Retour sur la progression
-- Accès direct aux fichiers convertis
+- macOS 10.15 (Catalina) or later
+- Apple Silicon (M1/M2/M3/M4) or Intel processor
 
-## Star History / Historique des étoiles
+## License
 
-[![Star History Chart](https://api.star-history.com/svg?repos=Polyx10/CTB2MD&type=Date)](https://star-history.com/#Polyx10/CTB2MD&Date)
-
-## License / Licence
-
-MIT License
+MIT

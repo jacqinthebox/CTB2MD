@@ -1,5 +1,8 @@
 # Python
 __pycache__/
+venv/
+*.spec
+settings.json
 *.py[cod]
 *$py.class
 .Python
