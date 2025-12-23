@@ -15,6 +15,7 @@ import tempfile
 import shutil
 import xml.etree.ElementTree as ET
 import json
+import base64
 
 # Optional: for password-protected files
 try:
@@ -142,9 +143,10 @@ class CTB2MD:
             raise
 
     def parse_sqlite_file(self, db_path):
-        """Parse CherryTree SQLite format and return nodes dict and children_map"""
+        """Parse CherryTree SQLite format and return nodes dict, children_map, and images"""
         nodes = {}
         children_map = {}
+        images = {}  # node_id -> list of (offset, image_data)
 
         with sqlite3.connect(db_path) as conn:
             cursor = conn.cursor()
@@ -167,7 +169,20 @@ class CTB2MD:
                     children_map[father_id] = []
                 children_map[father_id].append(node_id)
 
-        return nodes, children_map
+            # Get images
+            try:
+                cursor.execute("SELECT node_id, offset, png FROM image ORDER BY node_id, offset")
+                for row in cursor.fetchall():
+                    node_id, offset, png_data = row
+                    if png_data:
+                        if node_id not in images:
+                            images[node_id] = []
+                        images[node_id].append((offset, png_data))
+            except sqlite3.OperationalError:
+                # No image table exists
+                pass
+
+        return nodes, children_map, images
 
     @staticmethod
     def get_file_type(file_path):
@@ -185,12 +200,13 @@ class CTB2MD:
             return 'unknown'
 
     def parse_xml_file(self, xml_path):
-        """Parse CherryTree XML format and return nodes dict and children_map"""
+        """Parse CherryTree XML format and return nodes dict, children_map, and images"""
         tree = ET.parse(xml_path)
         root = tree.getroot()
 
         nodes = {}
         children_map = {0: []}  # 0 is root
+        images = {}  # node_id -> list of (offset, image_data)
         node_id_counter = [1]  # Use list for mutable counter in nested function
 
         def parse_node(element, parent_id=0):
@@ -206,6 +222,20 @@ class CTB2MD:
                 if rich_text.text:
                     content_parts.append(rich_text.text)
             content = ''.join(content_parts)
+
+            # Get images (encoded_png elements)
+            node_images = []
+            for encoded_png in element.findall('encoded_png'):
+                char_offset = int(encoded_png.get('char_offset', 0))
+                png_base64 = encoded_png.text
+                if png_base64:
+                    try:
+                        png_data = base64.b64decode(png_base64)
+                        node_images.append((char_offset, png_data))
+                    except Exception:
+                        pass
+            if node_images:
+                images[node_id] = sorted(node_images, key=lambda x: x[0])
 
             # Get syntax
             syntax = element.get('prog_lang', 'plain-text')
@@ -232,7 +262,7 @@ class CTB2MD:
         for node_elem in root.findall('node'):
             parse_node(node_elem, 0)
 
-        return nodes, children_map
+        return nodes, children_map, images
 
     @staticmethod
     def clean_xml_content(content):
@@ -329,14 +359,22 @@ class CTB2MD:
 
             # Parse based on file type
             if file_type == 'xml':
-                nodes, children_map = self.parse_xml_file(data_path)
+                nodes, children_map, images = self.parse_xml_file(data_path)
             elif file_type == 'sqlite':
-                nodes, children_map = self.parse_sqlite_file(data_path)
+                nodes, children_map, images = self.parse_sqlite_file(data_path)
             else:
                 messagebox.showerror("Error", f"Unknown file format: {data_path}")
                 return
 
-            stats = {"created": 0, "skipped_empty": 0, "folders": 0}
+            # Create attachments folder for images (Obsidian convention)
+            # Images go to <vault>/obsidian/attachments/ (sibling to output folder)
+            vault_root = os.path.dirname(output_dir)
+            attachments_dir = os.path.join(vault_root, "obsidian", "attachments")
+            if images:
+                os.makedirs(attachments_dir, exist_ok=True)
+
+            stats = {"created": 0, "skipped_empty": 0, "folders": 0, "images": 0}
+            image_counter = [0]  # Mutable counter for unique image names
 
             def has_content(node_id):
                 """Check if node or any descendant has content after conversion"""
@@ -347,10 +385,40 @@ class CTB2MD:
                         converted = self.convert_content(raw_content, node.get('syntax', 'plain'))
                         if converted and converted.strip():
                             return True
+                # Also check if node has images
+                if node_id in images:
+                    return True
                 for child_id in children_map.get(node_id, []):
                     if has_content(child_id):
                         return True
                 return False
+
+            def save_node_images(node_id, node_name):
+                """Save images for a node and return list of image references"""
+                if node_id not in images:
+                    return []
+
+                image_refs = []
+                safe_node_name = self.sanitize_filename(node_name)
+
+                for idx, (offset, png_data) in enumerate(images[node_id]):
+                    image_counter[0] += 1
+                    # Create unique filename: nodename_img1.png, nodename_img2.png, etc.
+                    image_filename = f"{safe_node_name}_img{idx + 1}.png"
+                    image_path = os.path.join(attachments_dir, image_filename)
+
+                    # Handle duplicate filenames
+                    if os.path.exists(image_path):
+                        image_filename = f"{safe_node_name}_{image_counter[0]}_img{idx + 1}.png"
+                        image_path = os.path.join(attachments_dir, image_filename)
+
+                    with open(image_path, 'wb') as f:
+                        f.write(png_data)
+
+                    stats["images"] += 1
+                    image_refs.append(f"![[{image_filename}]]")
+
+                return image_refs
 
             def export_node(node_id, path=""):
                 """Export node and children recursively"""
@@ -369,17 +437,27 @@ class CTB2MD:
                 converted = self.convert_content(content, syntax) if content else ''
                 has_text = bool(converted and converted.strip())
 
+                # Get images for this node
+                image_refs = save_node_images(node_id, name)
+                has_images = bool(image_refs)
+
                 if node_children:
                     # Node has children - create folder
                     folder_path = os.path.join(output_dir, path, safe_name)
                     os.makedirs(folder_path, exist_ok=True)
                     stats["folders"] += 1
 
-                    # Only create .md if this node has actual content after conversion
-                    if has_text:
+                    # Only create .md if this node has actual content or images
+                    if has_text or has_images:
                         file_path = os.path.join(folder_path, f"{safe_name}.md")
                         with open(file_path, 'w', encoding='utf-8') as f:
-                            f.write(f"# {name}\n\n{converted}")
+                            f.write(f"# {name}\n\n")
+                            if converted:
+                                f.write(converted)
+                            if has_images:
+                                if converted:
+                                    f.write("\n\n")
+                                f.write("\n\n".join(image_refs))
                         stats["created"] += 1
                     else:
                         stats["skipped_empty"] += 1
@@ -388,13 +466,19 @@ class CTB2MD:
                     for child_id in node_children:
                         export_node(child_id, os.path.join(path, safe_name))
                 else:
-                    # Leaf node - create file only if has content after conversion
-                    if has_text:
+                    # Leaf node - create file only if has content or images
+                    if has_text or has_images:
                         folder_path = os.path.join(output_dir, path)
                         os.makedirs(folder_path, exist_ok=True)
                         file_path = os.path.join(folder_path, f"{safe_name}.md")
                         with open(file_path, 'w', encoding='utf-8') as f:
-                            f.write(f"# {name}\n\n{converted}")
+                            f.write(f"# {name}\n\n")
+                            if converted:
+                                f.write(converted)
+                            if has_images:
+                                if converted:
+                                    f.write("\n\n")
+                                f.write("\n\n".join(image_refs))
                         stats["created"] += 1
                     else:
                         stats["skipped_empty"] += 1
@@ -406,6 +490,7 @@ class CTB2MD:
             msg = (f"Conversion complete!\n\n"
                    f"Files created: {stats['created']}\n"
                    f"Folders created: {stats['folders']}\n"
+                   f"Images exported: {stats['images']}\n"
                    f"Empty nodes skipped: {stats['skipped_empty']}\n\n"
                    f"Output: {output_dir}")
 
