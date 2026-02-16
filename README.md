@@ -70,6 +70,46 @@ Or add an alias to `~/.zshrc`:
 alias ctb2md="cd ~/path/to/CTB2MD && source venv/bin/activate && python ctb2md_hierarchical.py"
 ```
 
+### Option 3: Alfred Workflow
+
+Launch CTB2MD directly from Alfred:
+
+1. Open Alfred Preferences → Workflows
+2. Click `+` → Templates → Essentials → Keyword to Script
+3. Set your keyword (e.g., `ctb2md`)
+4. Double-click the "Run Script" box
+5. Set Language to `/bin/bash`
+6. Paste the script below
+
+**With venv (required for password-protected files):**
+
+```bash
+/path/to/CTB2MD/venv/bin/python /path/to/CTB2MD/ctb2md_hierarchical.py &
+disown
+```
+
+**Without venv (no password-protected file support):**
+
+```bash
+python3 /path/to/CTB2MD/ctb2md_hierarchical.py &
+disown
+```
+
+**Without venv but with password support:**
+
+First install py7zr globally:
+
+```bash
+pip3 install --user py7zr
+```
+
+Then use the simpler Alfred command:
+
+```bash
+python3 /path/to/CTB2MD/ctb2md_hierarchical.py &
+disown
+```
+
 ## Usage
 
 1. Launch the app (or run the script)
